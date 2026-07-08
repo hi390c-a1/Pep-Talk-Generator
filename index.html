@@ -239,11 +239,11 @@
   .stamp-mark {
     position: absolute;
     bottom: -16px;
-    left: 22px;
+    right: 18px;
     width: 74px;
     height: 74px;
     opacity: 0;
-    transform: scale(0.6) rotate(-14deg);
+    transform: scale(0.6) rotate(12deg);
     transition: none;
     pointer-events: none;
   }
@@ -251,9 +251,9 @@
     animation: stampIn 420ms cubic-bezier(.2,1.6,.4,1) forwards;
   }
   @keyframes stampIn {
-    0% { opacity: 0; transform: scale(2) rotate(-14deg); }
-    60% { opacity: 1; transform: scale(0.92) rotate(-14deg); }
-    100% { opacity: 1; transform: scale(1) rotate(-14deg); }
+    0% { opacity: 0; transform: scale(2) rotate(12deg); }
+    60% { opacity: 1; transform: scale(0.92) rotate(12deg); }
+    100% { opacity: 1; transform: scale(1) rotate(12deg); }
   }
 
   /* ---- controls ---- */
@@ -568,7 +568,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .stamp-mark.show { animation: none; opacity: 1; transform: scale(1) rotate(-14deg); }
+    .stamp-mark.show { animation: none; opacity: 1; transform: scale(1) rotate(12deg); }
     .lever-btn, .icon-btn { transition: none; }
   }
 </style>
