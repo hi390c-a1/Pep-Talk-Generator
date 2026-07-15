@@ -286,7 +286,8 @@
   }
   .lever-btn:focus-visible, .icon-btn:focus-visible, .copy-btn:focus-visible,
   .box:focus-visible, .toggle-manual:focus-visible, .label-input:focus-visible,
-  .edit-btn:focus-visible, .col-reset:focus-visible, .reset-all-link:focus-visible {
+  .edit-btn:focus-visible, .col-reset:focus-visible, .reset-all-link:focus-visible,
+  .sing-btn:focus-visible {
     outline: 3px solid var(--focus-ring);
     outline-offset: 2px;
   }
@@ -326,6 +327,34 @@
     text-underline-offset: 3px;
   }
   .copy-btn:hover { color: var(--teal-dim); }
+
+  .sing-btn {
+    font-family: 'Anton', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-size: 0.85rem;
+    color: var(--paper);
+    background: var(--teal);
+    border: none;
+    padding: 12px 22px;
+    cursor: pointer;
+    box-shadow: 0 4px 0 var(--teal-dim), 0 6px 12px -4px var(--card-shadow);
+    transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+  }
+  .sing-btn:hover { transform: translateY(-1px); }
+  .sing-btn:active { transform: translateY(2px); box-shadow: 0 2px 0 var(--teal-dim), 0 3px 6px -4px var(--card-shadow); }
+  .sing-btn:disabled { opacity: 0.55; cursor: default; transform: none; box-shadow: 0 4px 0 var(--teal-dim), 0 6px 12px -4px var(--card-shadow); }
+
+  .sing-status {
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--teal-dim);
+    min-height: 1.4em;
+    margin: 10px 0 0;
+  }
 
   /* ---- history strip ---- */
   .history {
@@ -607,6 +636,11 @@
     </div>
   </div>
   <button class="copy-btn" id="copyBtn" type="button">Copy this pep talk</button>
+
+  <div class="controls" style="margin-top: 14px;">
+    <button class="sing-btn" id="singBtn" type="button">🎵 Sing It!</button>
+  </div>
+  <p class="sing-status" id="singStatus" aria-live="polite"></p>
 
   <div class="history" id="history" aria-label="Recently generated pep talks"></div>
 
@@ -993,6 +1027,226 @@
       flash();
     }
   });
+
+  // ---- Sing It! : tiny in-browser synth + speech-synthesis "singing" ----
+  (function () {
+    var DEGREES = {
+      I: { off: 0, min: false }, ii: { off: 2, min: true }, iii: { off: 4, min: true },
+      IV: { off: 5, min: false }, V: { off: 7, min: false }, vi: { off: 9, min: true },
+      VII: { off: 11, min: true }
+    };
+    var MAJOR_STEPS = [0, 2, 4, 5, 7];
+    var MINOR_STEPS = [0, 3, 5, 7, 10];
+
+    var STYLES = [
+      { name: "Stadium Anthem", keyRoot: 48, progression: ["I", "V", "vi", "IV"], bpm: 126,
+        waveBass: "sawtooth", wavePad: "triangle", waveLead: "square",
+        kick: [0, 4], hat: [0, 1, 2, 3, 4, 5, 6, 7], snare: [4],
+        leadPattern: [0, 2, 1, 2, 0, 2, 1, 3], pitchContour: [1.15, 1.3, 1.05, 1.25, 1.1, 1.3, 1.0, 1.2], rate: 0.95 },
+      { name: "Lullaby Waltz", keyRoot: 41, progression: ["I", "vi", "IV", "V"], bpm: 76,
+        waveBass: "sine", wavePad: "sine", waveLead: "triangle",
+        kick: [0], hat: [], snare: [],
+        leadPattern: [0, 1, 2, 1, 0, 2, 1, 0], pitchContour: [1.05, 0.95, 1.1, 0.9], rate: 0.82 },
+      { name: "Disco Strut", keyRoot: 45, progression: ["I", "IV", "V", "IV"], bpm: 118,
+        waveBass: "sawtooth", wavePad: "square", waveLead: "square",
+        kick: [0, 2, 4, 6], hat: [1, 3, 5, 7], snare: [4],
+        leadPattern: [2, 0, 3, 1, 2, 0, 3, 1], pitchContour: [1.2, 0.95, 1.25, 1.0], rate: 1.0 },
+      { name: "8-Bit Hero", keyRoot: 50, progression: ["I", "V", "IV", "V"], bpm: 150,
+        waveBass: "square", wavePad: "square", waveLead: "square",
+        kick: [0, 4], hat: [0, 2, 4, 6], snare: [],
+        leadPattern: [0, 2, 3, 2, 0, 2, 3, 4], pitchContour: [1.3, 1.0, 1.35, 1.05], rate: 1.08 },
+      { name: "Power Ballad", keyRoot: 43, progression: ["vi", "IV", "I", "V"], bpm: 70,
+        waveBass: "sawtooth", wavePad: "sawtooth", waveLead: "triangle",
+        kick: [0], hat: [], snare: [2, 6],
+        leadPattern: [0, 1, 2, 3, 0, 1, 2, 3], pitchContour: [0.9, 1.15, 1.3, 1.05], rate: 0.8 },
+      { name: "Gospel Revival", keyRoot: 48, progression: ["I", "iii", "IV", "V"], bpm: 96,
+        waveBass: "triangle", wavePad: "sine", waveLead: "triangle",
+        kick: [0, 4], hat: [], snare: [2, 6],
+        leadPattern: [0, 2, 1, 3, 0, 2, 1, 4], pitchContour: [1.1, 1.0, 1.2, 0.95, 1.15], rate: 0.92 }
+    ];
+
+    var singBtn = document.getElementById("singBtn");
+    var singStatus = document.getElementById("singStatus");
+    var supportsSpeech = "speechSynthesis" in window;
+    var audioCtx = null;
+    var masterGain = null;
+    var noiseBuffer = null;
+    var playToken = 0;
+
+    function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+
+    function ensureAudio() {
+      if (!audioCtx) {
+        var Ctx = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new Ctx();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = 0.9;
+        masterGain.connect(audioCtx.destination);
+        var len = audioCtx.sampleRate * 2;
+        noiseBuffer = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+        var data = noiseBuffer.getChannelData(0);
+        for (var i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      }
+      if (audioCtx.state === "suspended") audioCtx.resume();
+    }
+
+    function degreeChord(keyRoot, degreeKey) {
+      var d = DEGREES[degreeKey];
+      var bassMidi = keyRoot + d.off;
+      var rootMidi = bassMidi + 12;
+      var third = rootMidi + (d.min ? 3 : 4);
+      var fifth = rootMidi + 7;
+      var scaleSteps = d.min ? MINOR_STEPS : MAJOR_STEPS;
+      var leadFreqs = scaleSteps.map(function (s) { return midiToFreq(rootMidi + 12 + s); });
+      return {
+        bassFreq: midiToFreq(bassMidi),
+        chordFreqs: [midiToFreq(rootMidi), midiToFreq(third), midiToFreq(fifth)],
+        leadFreqs: leadFreqs
+      };
+    }
+
+    function playTone(freq, startTime, dur, opts) {
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = opts.wave;
+      osc.frequency.value = freq;
+      var peak = opts.gain;
+      var attack = opts.attack || 0.01;
+      var release = opts.release || 0.08;
+      gain.gain.setValueAtTime(0, startTime);
+      gain.gain.linearRampToValueAtTime(peak, startTime + attack);
+      gain.gain.setValueAtTime(peak, Math.max(startTime + attack, startTime + dur - release));
+      gain.gain.linearRampToValueAtTime(0, startTime + dur);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(startTime);
+      osc.stop(startTime + dur + 0.02);
+    }
+
+    function playKick(startTime) {
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(150, startTime);
+      osc.frequency.exponentialRampToValueAtTime(42, startTime + 0.15);
+      gain.gain.setValueAtTime(0.9, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.2);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(startTime);
+      osc.stop(startTime + 0.22);
+    }
+
+    function playNoiseHit(startTime, dur, freqLo, freqHi, peak) {
+      var src = audioCtx.createBufferSource();
+      src.buffer = noiseBuffer;
+      var bp = audioCtx.createBiquadFilter();
+      bp.type = "bandpass";
+      bp.frequency.value = freqHi;
+      bp.Q.value = 0.7;
+      var hp = audioCtx.createBiquadFilter();
+      hp.type = "highpass";
+      hp.frequency.value = freqLo;
+      var gain = audioCtx.createGain();
+      gain.gain.setValueAtTime(peak, startTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, startTime + dur);
+      src.connect(hp);
+      hp.connect(bp);
+      bp.connect(gain);
+      gain.connect(masterGain);
+      src.start(startTime);
+      src.stop(startTime + dur + 0.02);
+    }
+
+    function playHat(startTime, dur) { playNoiseHit(startTime, dur, 6000, 9000, 0.18); }
+    function playSnare(startTime) { playNoiseHit(startTime, 0.15, 800, 2200, 0.35); }
+
+    function scheduleBacking(style, bars, startAt) {
+      var secPerBeat = 60 / style.bpm;
+      var stepDur = secPerBeat / 2;
+      var barDur = stepDur * 8;
+      for (var b = 0; b < bars; b++) {
+        var degreeKey = style.progression[b % style.progression.length];
+        var chord = degreeChord(style.keyRoot, degreeKey);
+        var barStart = startAt + b * barDur;
+        playTone(chord.bassFreq, barStart, barDur * 0.95, { wave: style.waveBass, gain: 0.16, attack: 0.02, release: 0.15 });
+        chord.chordFreqs.forEach(function (f) {
+          playTone(f, barStart, barDur * 0.9, { wave: style.wavePad, gain: 0.05, attack: 0.25, release: 0.3 });
+        });
+        for (var s = 0; s < 8; s++) {
+          var t = barStart + s * stepDur;
+          if (style.kick.indexOf(s) !== -1) playKick(t);
+          if (style.hat.indexOf(s) !== -1) playHat(t, stepDur * 0.6);
+          if (style.snare.indexOf(s) !== -1) playSnare(t);
+          var leadFreq = chord.leadFreqs[style.leadPattern[s] % chord.leadFreqs.length];
+          playTone(leadFreq, t, stepDur * 0.85, { wave: style.waveLead, gain: 0.1, attack: 0.005, release: 0.06 });
+        }
+      }
+    }
+
+    function estimateWordDur(word, rate) {
+      var letters = word.replace(/[^a-zA-Z']/g, "").length;
+      var base = 0.16 + letters * 0.045;
+      return Math.max(0.22, base) / rate;
+    }
+
+    function speakWords(words, style, token) {
+      var idx = 0;
+      function speakNext() {
+        if (token !== playToken || idx >= words.length) {
+          if (idx >= words.length) finishSinging(token);
+          return;
+        }
+        var utter = new SpeechSynthesisUtterance(words[idx]);
+        utter.pitch = Math.max(0, Math.min(2, style.pitchContour[idx % style.pitchContour.length] + (Math.random() * 0.06 - 0.03)));
+        utter.rate = style.rate;
+        utter.onend = speakNext;
+        utter.onerror = speakNext;
+        idx++;
+        speechSynthesis.speak(utter);
+      }
+      speakNext();
+    }
+
+    function finishSinging(token) {
+      if (token !== playToken) return;
+      singBtn.disabled = false;
+      singStatus.textContent = "";
+    }
+
+    singBtn.addEventListener("click", function () {
+      playToken++;
+      var token = playToken;
+      if (supportsSpeech) speechSynthesis.cancel();
+
+      var style = STYLES[Math.floor(Math.random() * STYLES.length)];
+      var words = fullText().split(/\s+/).filter(Boolean);
+
+      singBtn.disabled = true;
+      singStatus.textContent = supportsSpeech
+        ? "🎶 Singing it as: " + style.name.toUpperCase() + "..."
+        : "🎶 Playing it as: " + style.name.toUpperCase() + " (your browser can't sing the words, but here's the tune)";
+
+      var audioOk = true;
+      try {
+        ensureAudio();
+      } catch (e) { audioOk = false; }
+
+      var totalEstimate = words.reduce(function (sum, w) { return sum + estimateWordDur(w, style.rate); }, 0) + words.length * 0.05;
+      var secPerBeat = 60 / style.bpm;
+      var barDur = (secPerBeat / 2) * 8;
+      var bars = Math.max(2, Math.ceil((totalEstimate + 0.6) / barDur) + 1);
+
+      if (audioOk) scheduleBacking(style, bars, audioCtx.currentTime + 0.05);
+
+      if (supportsSpeech) {
+        speakWords(words, style, token);
+      } else {
+        var fallbackMs = audioOk ? bars * barDur * 1000 : 500;
+        setTimeout(function () { finishSinging(token); }, fallbackMs);
+      }
+    });
+  })();
 
   var toggleBtn = document.getElementById("toggleManual");
   var builder = document.getElementById("builder");
